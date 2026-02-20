@@ -1,0 +1,50 @@
+{
+    "name": "truelist/laravel",
+    "description": "Laravel integration for Truelist.io email validation",
+    "keywords": ["laravel", "email", "validation", "truelist", "email-validation", "deliverability"],
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Truelist",
+            "email": "support@truelist.io",
+            "homepage": "https://truelist.io"
+        }
+    ],
+    "homepage": "https://github.com/Truelist-io-Email-Validation/truelist-laravel",
+    "require": {
+        "php": "^8.1",
+        "illuminate/support": "^10.0|^11.0|^12.0",
+        "illuminate/http": "^10.0|^11.0|^12.0",
+        "illuminate/validation": "^10.0|^11.0|^12.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0|^10.0",
+        "phpunit/phpunit": "^10.0|^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Truelist\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Truelist\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Truelist\\TruelistServiceProvider"
+            ],
+            "aliases": {
+                "Truelist": "Truelist\\Facades\\Truelist"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
