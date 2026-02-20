@@ -105,6 +105,14 @@ $request->validate([
 ]);
 ```
 
+To reject risky emails with the string shorthand, use the `strict` parameter:
+
+```php
+$request->validate([
+    'email' => ['required', 'email', 'deliverable:strict'],
+]);
+```
+
 ### Rejecting risky emails
 
 By default, risky emails (accept-all domains, etc.) pass validation. To reject them:

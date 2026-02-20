@@ -29,13 +29,23 @@ class TruelistClient
 
     private function performRequest(string $email): ValidationResult
     {
-        $baseUrl = config('truelist.base_url', 'https://api.truelist.io');
+        $baseUrl = rtrim(config('truelist.base_url', 'https://api.truelist.io'), '/');
         $apiKey = config('truelist.api_key');
         $timeout = config('truelist.timeout', 10);
+
+        if (empty($apiKey)) {
+            throw new AuthenticationException(
+                'Truelist API key is not configured. Set TRUELIST_API_KEY in your .env file.'
+            );
+        }
 
         try {
             $response = Http::withToken($apiKey)
                 ->timeout($timeout)
+                ->retry(2, 100, function ($exception, $request) {
+                    return $exception instanceof \Illuminate\Http\Client\RequestException
+                        && ($exception->response->status() === 429 || $exception->response->status() >= 500);
+                }, throw: false)
                 ->acceptJson()
                 ->post("{$baseUrl}/api/v1/verify", [
                     'email' => $email,
@@ -119,7 +129,7 @@ class TruelistClient
     {
         $prefix = config('truelist.cache.prefix', 'truelist:');
 
-        return $prefix . 'validation:' . strtolower(trim($email));
+        return $prefix . 'validation:' . mb_strtolower(trim($email));
     }
 
     private function readCache(string $email): ?ValidationResult

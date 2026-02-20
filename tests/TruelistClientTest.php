@@ -278,7 +278,9 @@ class TruelistClientTest extends TestCase
             $this->apiUrl => function () use (&$callCount) {
                 $callCount++;
 
-                if ($callCount === 1) {
+                // Return 500 for the first 3 calls (initial + 2 retries)
+                // so the first validate() exhausts retries and returns unknown
+                if ($callCount <= 3) {
                     return Http::response('Internal Server Error', 500);
                 }
 
@@ -300,7 +302,8 @@ class TruelistClientTest extends TestCase
         $this->assertSame('valid', $result2->state);
         $this->assertFalse($result2->isError());
 
-        $this->assertSame(2, $callCount);
+        // 3 calls for first validate (initial + 2 retries), 1 for second
+        $this->assertSame(4, $callCount);
     }
 
     public function test_makes_separate_requests_for_different_emails(): void
@@ -399,6 +402,53 @@ class TruelistClientTest extends TestCase
                 && $request->method() === 'POST'
                 && $request->hasHeader('Authorization', 'Bearer test_api_key')
                 && $request['email'] === 'user@example.com';
+        });
+    }
+
+    // --- Early API key validation ---
+
+    public function test_throws_authentication_exception_when_api_key_is_null(): void
+    {
+        config()->set('truelist.api_key', null);
+
+        $this->expectException(AuthenticationException::class);
+        $this->expectExceptionMessage('Truelist API key is not configured');
+
+        $this->client->validate('user@example.com');
+    }
+
+    public function test_throws_authentication_exception_when_api_key_is_empty_string(): void
+    {
+        config()->set('truelist.api_key', '');
+
+        $this->expectException(AuthenticationException::class);
+        $this->expectExceptionMessage('Truelist API key is not configured');
+
+        $this->client->validate('user@example.com');
+    }
+
+    // --- Trailing slash on base_url ---
+
+    public function test_handles_trailing_slash_on_base_url(): void
+    {
+        config()->set('truelist.base_url', 'https://api.truelist.io/');
+
+        Http::fake([
+            $this->apiUrl => Http::response([
+                'state' => 'valid',
+                'sub_state' => 'ok',
+                'free_email' => false,
+                'role' => false,
+                'disposable' => false,
+            ]),
+        ]);
+
+        $result = $this->client->validate('user@example.com');
+
+        $this->assertSame('valid', $result->state);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === $this->apiUrl;
         });
     }
 }
