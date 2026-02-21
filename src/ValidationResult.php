@@ -8,9 +8,12 @@ class ValidationResult
         public readonly string $email,
         public readonly string $state,
         public readonly ?string $subState = null,
-        public readonly bool $freeEmail = false,
-        public readonly bool $role = false,
-        public readonly bool $disposable = false,
+        public readonly ?string $domain = null,
+        public readonly ?string $canonical = null,
+        public readonly ?string $mxRecord = null,
+        public readonly ?string $firstName = null,
+        public readonly ?string $lastName = null,
+        public readonly ?string $verifiedAt = null,
         public readonly ?string $suggestion = null,
         public readonly bool $error = false,
     ) {
@@ -18,18 +21,17 @@ class ValidationResult
 
     public function isValid(): bool
     {
-        return $this->state === 'valid'
-            || ($this->state === 'risky' && config('truelist.allow_risky', true));
+        return $this->state === 'ok';
     }
 
     public function isInvalid(): bool
     {
-        return $this->state === 'invalid';
+        return $this->state === 'email_invalid';
     }
 
-    public function isRisky(): bool
+    public function isAcceptAll(): bool
     {
-        return $this->state === 'risky';
+        return $this->state === 'accept_all';
     }
 
     public function isUnknown(): bool
@@ -42,15 +44,28 @@ class ValidationResult
         return $this->error;
     }
 
+    public function isDisposable(): bool
+    {
+        return $this->subState === 'is_disposable';
+    }
+
+    public function isRole(): bool
+    {
+        return $this->subState === 'is_role';
+    }
+
     public function toArray(): array
     {
         return [
             'email' => $this->email,
             'state' => $this->state,
             'sub_state' => $this->subState,
-            'free_email' => $this->freeEmail,
-            'role' => $this->role,
-            'disposable' => $this->disposable,
+            'domain' => $this->domain,
+            'canonical' => $this->canonical,
+            'mx_record' => $this->mxRecord,
+            'first_name' => $this->firstName,
+            'last_name' => $this->lastName,
+            'verified_at' => $this->verifiedAt,
             'suggestion' => $this->suggestion,
             'error' => $this->error,
         ];

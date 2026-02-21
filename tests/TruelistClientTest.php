@@ -14,7 +14,7 @@ class TruelistClientTest extends TestCase
 {
     private TruelistClient $client;
 
-    private string $apiUrl = 'https://api.truelist.io/api/v1/verify';
+    private string $apiUrl = 'https://api.truelist.io/api/v1/verify_inline*';
 
     protected function setUp(): void
     {
@@ -25,24 +25,17 @@ class TruelistClientTest extends TestCase
 
     // --- Successful responses ---
 
-    public function test_validate_returns_valid_result(): void
+    public function test_validate_returns_ok_result(): void
     {
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'valid',
-                'sub_state' => 'ok',
-                'suggestion' => null,
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse()),
         ]);
 
         $result = $this->client->validate('user@example.com');
 
         $this->assertInstanceOf(ValidationResult::class, $result);
-        $this->assertSame('valid', $result->state);
-        $this->assertSame('ok', $result->subState);
+        $this->assertSame('ok', $result->state);
+        $this->assertSame('email_ok', $result->subState);
         $this->assertTrue($result->isValid());
         $this->assertFalse($result->isError());
     }
@@ -50,61 +43,89 @@ class TruelistClientTest extends TestCase
     public function test_validate_returns_invalid_result(): void
     {
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'invalid',
-                'sub_state' => 'failed_no_mailbox',
-                'suggestion' => null,
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse([
+                'address' => 'bad@example.com',
+                'email_state' => 'email_invalid',
+                'email_sub_state' => 'failed_no_mailbox',
+            ])),
         ]);
 
         $result = $this->client->validate('bad@example.com');
 
-        $this->assertSame('invalid', $result->state);
+        $this->assertSame('email_invalid', $result->state);
         $this->assertSame('failed_no_mailbox', $result->subState);
         $this->assertTrue($result->isInvalid());
     }
 
-    public function test_validate_returns_risky_result(): void
+    public function test_validate_returns_accept_all_result(): void
     {
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'risky',
-                'sub_state' => 'accept_all',
-                'suggestion' => null,
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse([
+                'email_state' => 'accept_all',
+                'email_sub_state' => 'accept_all',
+            ])),
         ]);
 
         $result = $this->client->validate('info@example.com');
 
-        $this->assertSame('risky', $result->state);
-        $this->assertTrue($result->isRisky());
+        $this->assertSame('accept_all', $result->state);
+        $this->assertTrue($result->isAcceptAll());
     }
 
     public function test_validate_returns_result_with_all_fields(): void
     {
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'valid',
-                'sub_state' => 'ok',
-                'suggestion' => 'user@gmail.com',
-                'free_email' => true,
-                'role' => true,
-                'disposable' => true,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse([
+                'address' => 'user@example.com',
+                'domain' => 'example.com',
+                'canonical' => 'user',
+                'mx_record' => 'mx.example.com',
+                'first_name' => 'John',
+                'last_name' => 'Doe',
+                'email_state' => 'ok',
+                'email_sub_state' => 'email_ok',
+                'verified_at' => '2026-02-21T10:00:00.000Z',
+                'did_you_mean' => 'user@gmail.com',
+            ])),
         ]);
 
         $result = $this->client->validate('user@example.com');
 
-        $this->assertTrue($result->freeEmail);
-        $this->assertTrue($result->role);
-        $this->assertTrue($result->disposable);
+        $this->assertSame('example.com', $result->domain);
+        $this->assertSame('user', $result->canonical);
+        $this->assertSame('mx.example.com', $result->mxRecord);
+        $this->assertSame('John', $result->firstName);
+        $this->assertSame('Doe', $result->lastName);
+        $this->assertSame('2026-02-21T10:00:00.000Z', $result->verifiedAt);
         $this->assertSame('user@gmail.com', $result->suggestion);
+    }
+
+    public function test_validate_maps_disposable_sub_state(): void
+    {
+        Http::fake([
+            $this->apiUrl => Http::response($this->apiResponse([
+                'email_state' => 'email_invalid',
+                'email_sub_state' => 'is_disposable',
+            ])),
+        ]);
+
+        $result = $this->client->validate('temp@throwaway.com');
+
+        $this->assertTrue($result->isDisposable());
+    }
+
+    public function test_validate_maps_role_sub_state(): void
+    {
+        Http::fake([
+            $this->apiUrl => Http::response($this->apiResponse([
+                'email_state' => 'ok',
+                'email_sub_state' => 'is_role',
+            ])),
+        ]);
+
+        $result = $this->client->validate('admin@example.com');
+
+        $this->assertTrue($result->isRole());
     }
 
     // --- Error handling with raise_on_error disabled (default) ---
@@ -252,13 +273,7 @@ class TruelistClientTest extends TestCase
             $this->apiUrl => function () use (&$callCount) {
                 $callCount++;
 
-                return Http::response([
-                    'state' => 'valid',
-                    'sub_state' => 'ok',
-                    'free_email' => false,
-                    'role' => false,
-                    'disposable' => false,
-                ]);
+                return Http::response($this->apiResponse());
             },
         ]);
 
@@ -284,13 +299,7 @@ class TruelistClientTest extends TestCase
                     return Http::response('Internal Server Error', 500);
                 }
 
-                return Http::response([
-                    'state' => 'valid',
-                    'sub_state' => 'ok',
-                    'free_email' => false,
-                    'role' => false,
-                    'disposable' => false,
-                ]);
+                return Http::response($this->apiResponse());
             },
         ]);
 
@@ -299,7 +308,7 @@ class TruelistClientTest extends TestCase
         $this->assertTrue($result1->isError());
 
         $result2 = $this->client->validate('user@example.com');
-        $this->assertSame('valid', $result2->state);
+        $this->assertSame('ok', $result2->state);
         $this->assertFalse($result2->isError());
 
         // 3 calls for first validate (initial + 2 retries), 1 for second
@@ -315,13 +324,7 @@ class TruelistClientTest extends TestCase
             $this->apiUrl => function () use (&$callCount) {
                 $callCount++;
 
-                return Http::response([
-                    'state' => 'valid',
-                    'sub_state' => 'ok',
-                    'free_email' => false,
-                    'role' => false,
-                    'disposable' => false,
-                ]);
+                return Http::response($this->apiResponse());
             },
         ]);
 
@@ -340,13 +343,7 @@ class TruelistClientTest extends TestCase
             $this->apiUrl => function () use (&$callCount) {
                 $callCount++;
 
-                return Http::response([
-                    'state' => 'valid',
-                    'sub_state' => 'ok',
-                    'free_email' => false,
-                    'role' => false,
-                    'disposable' => false,
-                ]);
+                return Http::response($this->apiResponse());
             },
         ]);
 
@@ -365,13 +362,7 @@ class TruelistClientTest extends TestCase
             $this->apiUrl => function () use (&$callCount) {
                 $callCount++;
 
-                return Http::response([
-                    'state' => 'valid',
-                    'sub_state' => 'ok',
-                    'free_email' => false,
-                    'role' => false,
-                    'disposable' => false,
-                ]);
+                return Http::response($this->apiResponse());
             },
         ]);
 
@@ -386,22 +377,16 @@ class TruelistClientTest extends TestCase
     public function test_sends_correct_request(): void
     {
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'valid',
-                'sub_state' => 'ok',
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse()),
         ]);
 
         $this->client->validate('user@example.com');
 
         Http::assertSent(function ($request) {
-            return $request->url() === $this->apiUrl
+            return str_contains($request->url(), '/api/v1/verify_inline')
+                && str_contains($request->url(), 'email=user%40example.com')
                 && $request->method() === 'POST'
-                && $request->hasHeader('Authorization', 'Bearer test_api_key')
-                && $request['email'] === 'user@example.com';
+                && $request->hasHeader('Authorization', 'Bearer test_api_key');
         });
     }
 
@@ -434,21 +419,15 @@ class TruelistClientTest extends TestCase
         config()->set('truelist.base_url', 'https://api.truelist.io/');
 
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'valid',
-                'sub_state' => 'ok',
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse()),
         ]);
 
         $result = $this->client->validate('user@example.com');
 
-        $this->assertSame('valid', $result->state);
+        $this->assertSame('ok', $result->state);
 
         Http::assertSent(function ($request) {
-            return $request->url() === $this->apiUrl;
+            return str_contains($request->url(), '/api/v1/verify_inline');
         });
     }
 }
