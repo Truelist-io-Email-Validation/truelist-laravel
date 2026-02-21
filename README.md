@@ -68,9 +68,6 @@ return [
     // Request timeout in seconds.
     'timeout' => env('TRUELIST_TIMEOUT', 10),
 
-    // Whether "risky" emails (accept-all domains, etc.) pass validation.
-    'allow_risky' => env('TRUELIST_ALLOW_RISKY', true),
-
     // When true, raises exceptions on API failures.
     // When false (default), returns "unknown" on errors (fail open).
     // Note: Auth errors (401) always throw regardless of this setting.
@@ -105,28 +102,6 @@ $request->validate([
 ]);
 ```
 
-To reject risky emails with the string shorthand, use the `strict` parameter:
-
-```php
-$request->validate([
-    'email' => ['required', 'email', 'deliverable:strict'],
-]);
-```
-
-### Rejecting risky emails
-
-By default, risky emails (accept-all domains, etc.) pass validation. To reject them:
-
-```php
-// Per-rule override:
-$request->validate([
-    'email' => ['required', 'email', new Deliverable(allowRisky: false)],
-]);
-
-// Or globally via .env:
-TRUELIST_ALLOW_RISKY=false
-```
-
 ### Behavior on errors
 
 The validation rule **fails open** by design. If the Truelist API is unreachable (timeout, 500, rate limit), the email passes validation so your forms keep working.
@@ -141,17 +116,23 @@ use Truelist\TruelistClient;
 $client = app(TruelistClient::class);
 $result = $client->validate('user@example.com');
 
-$result->state;       // "valid", "invalid", "risky", or "unknown"
-$result->subState;    // "ok", "failed_no_mailbox", "disposable_address", etc.
-$result->isValid();   // true/false (respects allow_risky config)
-$result->isInvalid(); // true/false
-$result->isRisky();   // true/false
-$result->isUnknown(); // true/false
+$result->state;       // "ok", "email_invalid", "accept_all", or "unknown"
+$result->subState;    // "email_ok", "is_disposable", "is_role", etc.
+$result->isValid();   // true when state is "ok"
+$result->isInvalid(); // true when state is "email_invalid"
+$result->isAcceptAll(); // true when state is "accept_all"
+$result->isUnknown(); // true when state is "unknown"
 
+$result->domain;      // Domain part of the email address
+$result->canonical;   // Local part of the email address
+$result->mxRecord;    // MX record for the domain, if available
+$result->firstName;   // First name, if available
+$result->lastName;    // Last name, if available
+$result->verifiedAt;  // Timestamp of verification
 $result->suggestion;  // Suggested correction, if available
-$result->freeEmail;   // Whether it's a free email provider
-$result->role;        // Whether it's a role address (info@, admin@, etc.)
-$result->disposable;  // Whether it's a disposable/temporary address
+
+$result->isDisposable(); // true when sub-state is "is_disposable"
+$result->isRole();       // true when sub-state is "is_role"
 ```
 
 ## Facade Usage
@@ -166,14 +147,23 @@ if ($result->isValid()) {
 }
 ```
 
+## States
+
+| State | Meaning |
+|-------|---------|
+| `ok` | Email is valid and deliverable |
+| `email_invalid` | Email is invalid or undeliverable |
+| `accept_all` | Domain accepts all emails (risky) |
+| `unknown` | Could not determine status |
+
 ## Sub-states
 
 | Sub-state | Meaning |
 |-----------|---------|
-| `ok` | Email is valid and deliverable |
-| `accept_all` | Domain accepts all emails (risky) |
-| `disposable_address` | Disposable/temporary email |
-| `role_address` | Role-based address (info@, admin@) |
+| `email_ok` | Email is valid and deliverable |
+| `is_disposable` | Disposable/temporary email |
+| `is_role` | Role-based address (info@, admin@) |
+| `accept_all` | Domain accepts all emails |
 | `failed_mx_check` | Domain has no mail server |
 | `failed_spam_trap` | Known spam trap address |
 | `failed_no_mailbox` | Mailbox does not exist |
@@ -222,11 +212,18 @@ use Illuminate\Support\Facades\Http;
 
 Http::fake([
     'api.truelist.io/*' => Http::response([
-        'state' => 'valid',
-        'sub_state' => 'ok',
-        'free_email' => false,
-        'role' => false,
-        'disposable' => false,
+        'emails' => [[
+            'address' => 'user@example.com',
+            'domain' => 'example.com',
+            'canonical' => 'user',
+            'mx_record' => null,
+            'first_name' => null,
+            'last_name' => null,
+            'email_state' => 'ok',
+            'email_sub_state' => 'email_ok',
+            'verified_at' => '2026-02-21T10:00:00.000Z',
+            'did_you_mean' => null,
+        ]],
     ]),
 ]);
 ```
@@ -241,7 +238,7 @@ $this->mock(TruelistClient::class, function ($mock) {
     $mock->shouldReceive('validate')
         ->andReturn(new ValidationResult(
             email: 'user@example.com',
-            state: 'valid',
+            state: 'ok',
         ));
 });
 ```

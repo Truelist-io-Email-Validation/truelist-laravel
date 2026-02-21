@@ -26,8 +26,7 @@ class TruelistServiceProvider extends ServiceProvider
         }
 
         Validator::extend('deliverable', function ($attribute, $value, $parameters, $validator) {
-            $allowRisky = in_array('strict', $parameters) ? false : null;
-            $rule = new Deliverable($allowRisky);
+            $rule = new Deliverable;
 
             $failed = false;
             $rule->validate($attribute, $value, function ($message) use (&$failed) {

@@ -9,18 +9,12 @@ use Truelist\Rules\Deliverable;
 
 class DeliverableRuleTest extends TestCase
 {
-    private string $apiUrl = 'https://api.truelist.io/api/v1/verify';
+    private string $apiUrl = 'https://api.truelist.io/api/v1/verify_inline*';
 
-    public function test_passes_for_valid_email(): void
+    public function test_passes_for_ok_email(): void
     {
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'valid',
-                'sub_state' => 'ok',
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse()),
         ]);
 
         $validator = Validator::make(
@@ -34,13 +28,10 @@ class DeliverableRuleTest extends TestCase
     public function test_fails_for_invalid_email(): void
     {
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'invalid',
-                'sub_state' => 'failed_no_mailbox',
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse([
+                'email_state' => 'email_invalid',
+                'email_sub_state' => 'failed_no_mailbox',
+            ])),
         ]);
 
         $validator = Validator::make(
@@ -52,43 +43,18 @@ class DeliverableRuleTest extends TestCase
         $this->assertArrayHasKey('email', $validator->errors()->toArray());
     }
 
-    public function test_passes_for_risky_email_when_allow_risky_is_true(): void
+    public function test_fails_for_accept_all_email(): void
     {
-        config()->set('truelist.allow_risky', true);
-
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'risky',
-                'sub_state' => 'accept_all',
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse([
+                'email_state' => 'accept_all',
+                'email_sub_state' => 'accept_all',
+            ])),
         ]);
 
         $validator = Validator::make(
             ['email' => 'info@example.com'],
             ['email' => ['required', 'email', new Deliverable]]
-        );
-
-        $this->assertTrue($validator->passes());
-    }
-
-    public function test_fails_for_risky_email_when_allow_risky_is_false_via_option(): void
-    {
-        Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'risky',
-                'sub_state' => 'accept_all',
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
-        ]);
-
-        $validator = Validator::make(
-            ['email' => 'info@example.com'],
-            ['email' => ['required', 'email', new Deliverable(allowRisky: false)]]
         );
 
         $this->assertFalse($validator->passes());
@@ -97,13 +63,10 @@ class DeliverableRuleTest extends TestCase
     public function test_passes_for_unknown_result_from_api(): void
     {
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'unknown',
-                'sub_state' => 'unknown',
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse([
+                'email_state' => 'unknown',
+                'email_sub_state' => 'unknown',
+            ])),
         ]);
 
         $validator = Validator::make(
@@ -169,13 +132,7 @@ class DeliverableRuleTest extends TestCase
     public function test_string_rule_shorthand(): void
     {
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'valid',
-                'sub_state' => 'ok',
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse()),
         ]);
 
         $validator = Validator::make(
@@ -189,13 +146,10 @@ class DeliverableRuleTest extends TestCase
     public function test_string_rule_shorthand_fails_for_invalid(): void
     {
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'invalid',
-                'sub_state' => 'failed_no_mailbox',
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse([
+                'email_state' => 'email_invalid',
+                'email_sub_state' => 'failed_no_mailbox',
+            ])),
         ]);
 
         $validator = Validator::make(
@@ -209,13 +163,10 @@ class DeliverableRuleTest extends TestCase
     public function test_error_message_includes_attribute_name(): void
     {
         Http::fake([
-            $this->apiUrl => Http::response([
-                'state' => 'invalid',
-                'sub_state' => 'failed_no_mailbox',
-                'free_email' => false,
-                'role' => false,
-                'disposable' => false,
-            ]),
+            $this->apiUrl => Http::response($this->apiResponse([
+                'email_state' => 'email_invalid',
+                'email_sub_state' => 'failed_no_mailbox',
+            ])),
         ]);
 
         $validator = Validator::make(
