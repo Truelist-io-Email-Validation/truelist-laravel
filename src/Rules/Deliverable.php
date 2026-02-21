@@ -9,11 +9,8 @@ use Truelist\TruelistClient;
 
 class Deliverable implements ValidationRule
 {
-    private ?bool $allowRisky;
-
-    public function __construct(?bool $allowRisky = null)
+    public function __construct()
     {
-        $this->allowRisky = $allowRisky;
     }
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
@@ -32,10 +29,7 @@ class Deliverable implements ValidationRule
             return;
         }
 
-        $allowRisky = $this->allowRisky ?? config('truelist.allow_risky', true);
-
-        $deliverable = $result->state === 'valid'
-            || ($result->state === 'risky' && $allowRisky)
+        $deliverable = $result->state === 'ok'
             || $result->isUnknown();
 
         if (! $deliverable) {

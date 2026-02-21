@@ -47,9 +47,7 @@ class TruelistClient
                         && ($exception->response->status() === 429 || $exception->response->status() >= 500);
                 }, throw: false)
                 ->acceptJson()
-                ->post("{$baseUrl}/api/v1/verify", [
-                    'email' => $email,
-                ]);
+                ->post("{$baseUrl}/api/v1/verify_inline?" . http_build_query(['email' => $email]));
 
             return $this->handleResponse($email, $response);
         } catch (AuthenticationException $e) {
@@ -89,21 +87,26 @@ class TruelistClient
         try {
             $data = $response->json();
 
-            if (! is_array($data)) {
+            if (! is_array($data) || ! isset($data['emails'][0])) {
                 return $this->handleError(
                     $email,
                     new ApiException('Invalid JSON response from API')
                 );
             }
 
+            $entry = $data['emails'][0];
+
             return new ValidationResult(
-                email: $email,
-                state: $data['state'] ?? 'unknown',
-                subState: $data['sub_state'] ?? null,
-                freeEmail: $data['free_email'] ?? false,
-                role: $data['role'] ?? false,
-                disposable: $data['disposable'] ?? false,
-                suggestion: $data['suggestion'] ?? null,
+                email: $entry['address'] ?? $email,
+                state: $entry['email_state'] ?? 'unknown',
+                subState: $entry['email_sub_state'] ?? null,
+                domain: $entry['domain'] ?? null,
+                canonical: $entry['canonical'] ?? null,
+                mxRecord: $entry['mx_record'] ?? null,
+                firstName: $entry['first_name'] ?? null,
+                lastName: $entry['last_name'] ?? null,
+                verifiedAt: $entry['verified_at'] ?? null,
+                suggestion: $entry['did_you_mean'] ?? null,
             );
         } catch (\Throwable $e) {
             return $this->handleError($email, $e);
